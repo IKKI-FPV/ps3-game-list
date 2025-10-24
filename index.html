@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lista Giochi PS3 (Italiano)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="./track.js"></script>
+  <style>
+    body { background-color: #0f172a; color: #f1f5f9; }
+    .card { background-color: #1e293b; }
+    .star { cursor: pointer; transition: color 0.2s; }
+    .star.active { color: #facc15; }
+  </style>
+</head>
+<body class="min-h-screen p-4">
+  <h1 class="text-2xl font-bold mb-4 text-center">🎮 Giochi PS3 in Italiano</h1>
+  <div class="flex flex-col items-center space-y-3">
+    <input id="fileInput" type="file" accept=".xml" class="text-sm text-gray-200" />
+    <button id="loadBtn" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Carica Lista</button>
+  </div>
+  <div id="stats" class="text-center mt-4 hidden">
+    <p><span id="count"></span> giochi trovati in italiano</p>
+    <p class="mt-1">Preferiti: <span id="favCount">0</span> | Totale spazio: <span id="favSize">0</span> GB</p>
+    <button id="exportBtn" class="mt-2 bg-green-500 hover:bg-green-600 px-4 py-2 rounded">📤 Esporta preferiti (HTML)</button>
+  </div>
+  <div id="gameList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-6"></div>
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const loadBtn = document.getElementById('loadBtn');
+    const gameList = document.getElementById('gameList');
+    const stats = document.getElementById('stats');
+    const count = document.getElementById('count');
+    const favCount = document.getElementById('favCount');
+    const favSize = document.getElementById('favSize');
+    const exportBtn = document.getElementById('exportBtn');
+    let games = [];
+    let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+
+    loadBtn.onclick = () => {
+      const file = fileInput.files[0];
+      if (!file) return alert('Seleziona un file XML prima.');
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const xml = new DOMParser().parseFromString(e.target.result, 'text/xml');
+        const files = xml.getElementsByTagName('file');
+        games = [];
+        for (let f of files) {
+          const name = f.getAttribute('name');
+          const size = parseInt(f.getElementsByTagName('size')[0]?.textContent || 0);
+          if (name.match(/\(.*It.*\)/i)) {
+            games.push({ name: name.replace('all/', ''), sizeGB: (size / 1073741824).toFixed(2) });
+          }
+        }
+        renderGames();
+      };
+      reader.readAsText(file);
+    };
+
+    function renderGames() {
+      gameList.innerHTML = '';
+      stats.classList.remove('hidden');
+      count.textContent = games.length;
+      games.forEach(game => {
+        const isFav = favorites.includes(game.name);
+        const div = document.createElement('div');
+        div.className = 'card p-3 rounded shadow flex justify-between items-center';
+        div.innerHTML = `<div><p class="font-semibold">${game.name}</p><p class="text-sm text-gray-400">${game.sizeGB} GB</p></div><span class="star text-2xl ${isFav ? 'active' : ''}">★</span>`;
+        const star = div.querySelector('.star');
+        star.onclick = () => toggleFavorite(game.name, game.sizeGB, star);
+        gameList.appendChild(div);
+      });
+      updateFavStats();
+    }
+
+    function toggleFavorite(name, sizeGB, star) {
+      const index = favorites.indexOf(name);
+      if (index >= 0) favorites.splice(index, 1);
+      else favorites.push(name);
+      localStorage.setItem('favorites', JSON.stringify(favorites));
+      star.classList.toggle('active');
+      updateFavStats();
+    }
+
+    function updateFavStats() {
+      favCount.textContent = favorites.length;
+      let total = 0;
+      favorites.forEach(fav => {
+        const g = games.find(g => g.name === fav);
+        if (g) total += parseFloat(g.sizeGB);
+      });
+      favSize.textContent = total.toFixed(2);
+    }
+
+    function generateHTMLReport(favGames, totalGB) {
+      const rows = favGames.map(g => `<tr><td style="padding:8px 12px; border-bottom:1px solid #334155;">${g.name}</td><td style="padding:8px 12px; border-bottom:1px solid #334155; text-align:right;">${g.sizeGB} GB</td></tr>`).join('');
+      return `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Preferiti PS3</title></head><body style="background:#0f172a;color:#f1f5f9;font-family:sans-serif;padding:20px;"><h1>Preferiti PS3 (Italiano)</h1><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="text-align:left;">Nome</th><th style="text-align:right;">Dimensione</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>Totale</td><td style="text-align:right;">${totalGB} GB</td></tr></tfoot></table></body></html>`;
+    }
+
+    exportBtn.onclick = () => {
+      if (favorites.length === 0) return alert("Nessun gioco selezionato!");
+      const favGames = favorites.map(name => games.find(g => g.name === name)).filter(Boolean);
+      const totalGB = favSize.textContent;
+      const htmlContent = generateHTMLReport(favGames, totalGB);
+      const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ps3_preferiti.html";
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  </script>
+</body>
+</html>
